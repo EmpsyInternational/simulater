@@ -1,0 +1,885 @@
+<title>Simulador Credix</title>
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  /* Identidad Credix: blanco con rosado. Un solo tema, intencional. */
+  :root{
+    color-scheme:light;
+    --paper:#fff8fb;
+    --surface:#ffffff;
+    --surface-2:#fdf3f7;
+    --line:#f2dce6;
+    --line-soft:#f9ecf2;
+    --ink:#26161c;
+    --muted:#6f5b62;
+    --faint:#a48f97;
+    --accent:#c2185b;
+    --accent-deep:#8e0f3f;
+    --accent-bright:#f0497f;
+    --accent-ink:#ffffff;
+    --accent-soft:#fde8ef;
+    --accent-soft-2:#fbd9e5;
+    --flag:#8a5a12;
+    --flag-soft:#fbf2e3;
+    --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,sans-serif;
+    --serif:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:14px;
+    line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{margin:0;text-wrap:balance}
+
+  /* ---------- barra superior ---------- */
+  .topbar{
+    position:sticky;
+    top:env(safe-area-inset-top, 0px);
+    z-index:20;
+    display:flex;
+    align-items:center;
+    gap:16px;
+    flex-wrap:wrap;
+    padding:11px 20px;
+    background:var(--surface);
+    border-bottom:1px solid var(--line);
+  }
+  .lockup{display:flex;align-items:center;gap:9px}
+  .lockup svg{display:block;flex:none}
+  .wordmark{
+    font-family:var(--serif);
+    font-weight:600;
+    font-size:21px;
+    letter-spacing:.005em;
+    color:var(--accent-deep);
+    line-height:1;
+  }
+  .topbar .eyebrow{
+    font-size:11px;
+    letter-spacing:.09em;
+    text-transform:uppercase;
+    color:var(--faint);
+    border-left:1px solid var(--line);
+    padding-left:16px;
+  }
+  .topbar .spacer{flex:1 1 auto}
+
+  .btn{
+    font-family:var(--sans);
+    font-size:13.5px;
+    font-weight:600;
+    border-radius:6px;
+    padding:9px 16px;
+    border:1px solid transparent;
+    cursor:pointer;
+    background:var(--accent);
+    color:var(--accent-ink);
+  }
+  .btn:hover{background:var(--accent-deep)}
+  .btn:disabled{opacity:.45;cursor:not-allowed;background:var(--accent)}
+  :is(button,input,select,a):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  /* ---------- layout ---------- */
+  .wrap{
+    display:grid;
+    grid-template-columns:330px minmax(0,1fr);
+    gap:24px;
+    align-items:start;
+    padding:24px 20px 56px;
+  }
+  @media (max-width:980px){
+    .wrap{grid-template-columns:1fr;padding-inline:16px}
+    .panel{position:static !important}
+  }
+
+  /* ---------- panel de parámetros ---------- */
+  .panel{
+    position:sticky;
+    top:calc(env(safe-area-inset-top, 0px) + 70px);
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:18px 18px 20px;
+  }
+  .panel h2{
+    font-family:var(--sans);
+    font-size:11px;
+    font-weight:600;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--accent);
+  }
+  .fieldset{display:flex;flex-direction:column;gap:12px;margin-top:14px}
+  .fieldset + .fieldset{
+    margin-top:20px;
+    padding-top:18px;
+    border-top:1px solid var(--line-soft);
+  }
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field > label{font-size:12.5px;color:var(--muted);font-weight:500}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+  input[type="text"],input[type="number"],input[type="date"],select{
+    font-family:var(--sans);
+    font-size:14px;
+    color:var(--ink);
+    background:var(--surface-2);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:8px 10px;
+    width:100%;
+    min-width:0;
+  }
+  input[type="number"],input.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  input:focus,select:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+  input::placeholder{color:var(--faint)}
+
+  .segmented{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:2px;gap:2px}
+  .segmented button{
+    flex:1;
+    font-family:var(--sans);
+    font-size:12.5px;
+    font-weight:500;
+    padding:6px 4px;
+    border:0;
+    border-radius:4px;
+    background:transparent;
+    color:var(--muted);
+    cursor:pointer;
+  }
+  .segmented button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+
+  .derived{
+    margin-top:2px;
+    font-size:12px;
+    color:var(--muted);
+    background:var(--accent-soft);
+    border-radius:5px;
+    padding:6px 9px;
+  }
+  .derived b{font-family:var(--mono);font-weight:600;color:var(--accent-deep);font-variant-numeric:tabular-nums}
+
+  /* ---------- resultados ---------- */
+  .results{display:flex;flex-direction:column;gap:20px;min-width:0}
+
+  .tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  @media (max-width:760px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .tile{background:var(--surface);padding:14px 16px 16px;display:flex;flex-direction:column;gap:4px}
+  .tile .k{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  .tile .v{font-family:var(--mono);font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .tile .s{font-size:11.5px;color:var(--muted)}
+  .tile.lead{background:var(--accent-soft)}
+  .tile.lead .k{color:var(--accent)}
+  .tile.lead .v{color:var(--accent-deep)}
+
+  .tablecard{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .tablecard header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:14px 16px;border-bottom:1px solid var(--line)}
+  .tablecard h3{font-family:var(--serif);font-size:16px;font-weight:600;color:var(--accent-deep)}
+  .tablecard header p{margin:0;font-size:12.5px;color:var(--muted)}
+  .scroll{overflow-x:auto}
+
+  table{border-collapse:collapse;width:100%;min-width:860px;font-size:13px}
+  thead th{
+    position:sticky;top:0;
+    background:var(--accent-soft);
+    color:var(--accent-deep);
+    font-size:10.5px;
+    font-weight:600;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    text-align:right;
+    padding:9px 12px;
+    border-bottom:1px solid var(--accent-soft-2);
+    white-space:nowrap;
+  }
+  thead th.l{text-align:left}
+  thead th.pen{color:var(--flag);background:var(--flag-soft)}
+  tbody td{
+    padding:7px 12px;
+    text-align:right;
+    border-bottom:1px solid var(--line-soft);
+    font-family:var(--mono);
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+  }
+  tbody td.l{text-align:left}
+  tbody td.per{color:var(--faint)}
+  tbody td.pen{color:var(--flag);background:var(--flag-soft)}
+  tbody td.cuota{font-weight:600;color:var(--accent-deep)}
+  tbody tr:last-child td{border-bottom:0}
+  tfoot td{
+    padding:10px 12px;
+    text-align:right;
+    font-family:var(--mono);
+    font-weight:600;
+    font-variant-numeric:tabular-nums;
+    border-top:1px solid var(--accent-soft-2);
+    background:var(--surface-2);
+    white-space:nowrap;
+  }
+  tfoot td.l{text-align:left;font-family:var(--sans);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--accent)}
+
+  .notes{font-size:12.5px;color:var(--muted);line-height:1.6;padding:0 2px}
+  .notes ul{margin:6px 0 0;padding-left:18px}
+  .notes li{margin-bottom:3px}
+  .notes li::marker{color:var(--accent-bright)}
+  .notes strong{color:var(--ink);font-weight:600}
+
+  .toast{
+    position:fixed;
+    left:50%;
+    transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom, 0px) + 20px);
+    z-index:40;
+    background:var(--accent-deep);
+    color:#ffffff;
+    font-size:13px;
+    padding:10px 16px;
+    border-radius:6px;
+    max-width:min(520px,calc(100% - 32px));
+  }
+  .alert{margin-top:12px;font-size:12.5px;color:var(--flag);background:var(--flag-soft);border-radius:6px;padding:8px 10px}
+</style>
+
+<div class="topbar">
+  <div class="lockup">
+    <svg width="30" height="30" viewBox="0 0 40 40" aria-hidden="true">
+      <path d="M34 20 A14 14 0 1 1 21.95 6.14" fill="none" stroke="#b0134e" stroke-width="7.5" stroke-linecap="round"/>
+      <circle cx="30.57" cy="10.82" r="3.6" fill="#f0497f"/>
+    </svg>
+    <span class="wordmark">Credix</span>
+  </div>
+  <div class="eyebrow">Simulador · amortización con comisión flat</div>
+  <div class="spacer"></div>
+  <button class="btn" id="btn-pdf" type="button">Descargar PDF</button>
+</div>
+
+<div class="wrap">
+  <!-- ============ PARÁMETROS ============ -->
+  <form class="panel" id="form" autocomplete="off">
+    <h2>Parámetros del crédito</h2>
+
+    <div class="fieldset">
+      <div class="field">
+        <label for="monto">Monto a financiar</label>
+        <input type="number" id="monto" class="num" value="580000" min="1" step="1000">
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label for="cuotas">N.º de cuotas</label>
+          <input type="number" id="cuotas" class="num" value="10" min="1" max="360" step="1">
+        </div>
+        <div class="field">
+          <label for="frecuencia">Frecuencia</label>
+          <select id="frecuencia">
+            <option value="semanal">Semanal</option>
+            <option value="catorcenal">Catorcenal</option>
+            <option value="quincenal" selected>Quincenal</option>
+            <option value="mensual">Mensual</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="fecha1">Fecha de la primera cuota</label>
+        <input type="date" id="fecha1" value="2026-10-03">
+      </div>
+    </div>
+
+    <div class="fieldset">
+      <div class="field">
+        <label>Cómo se expresa la comisión</label>
+        <div class="segmented" id="modo" role="group" aria-label="Base de la comisión">
+          <button type="button" data-modo="mensual" aria-pressed="true">Tasa mensual</button>
+          <button type="button" data-modo="cuota" aria-pressed="false">Tasa por cuota</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="tasa" id="tasa-label">Comisión mensual (%)</label>
+        <input type="number" id="tasa" class="num" value="7" min="0" step="0.01">
+      </div>
+      <div class="derived" id="derived">&nbsp;</div>
+    </div>
+
+    <div class="fieldset">
+      <div class="row2">
+        <div class="field">
+          <label for="pen1">Penalidad cuota impaga (%)</label>
+          <input type="number" id="pen1" class="num" value="2" min="0" step="0.01">
+        </div>
+        <div class="field">
+          <label for="pen2">Penalidad plazo vencido (%)</label>
+          <input type="number" id="pen2" class="num" value="0.2" min="0" step="0.01">
+        </div>
+      </div>
+    </div>
+
+    <div class="fieldset">
+      <div class="field">
+        <label for="entidad">Entidad que otorga</label>
+        <input type="text" id="entidad" value="Credix" placeholder="Nombre de la empresa">
+      </div>
+      <div class="field">
+        <label for="cliente">Cliente</label>
+        <input type="text" id="cliente" placeholder="Nombre completo">
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label for="ident">Identificación</label>
+          <input type="text" id="ident" placeholder="Cédula / ID">
+        </div>
+        <div class="field">
+          <label for="credito">N.º de crédito</label>
+          <input type="text" id="credito" placeholder="Referencia">
+        </div>
+      </div>
+      <div class="field">
+        <label for="moneda">Símbolo de moneda</label>
+        <input type="text" id="moneda" value="$" maxlength="4">
+      </div>
+    </div>
+
+    <div class="alert" id="alert" hidden></div>
+  </form>
+
+  <!-- ============ RESULTADOS ============ -->
+  <div class="results">
+    <div class="tiles">
+      <div class="tile"><div class="k">Monto financiado</div><div class="v" id="t-monto">—</div><div class="s" id="t-monto-s">capital</div></div>
+      <div class="tile lead"><div class="k">Cuota</div><div class="v" id="t-cuota">—</div><div class="s" id="t-cuota-s">&nbsp;</div></div>
+      <div class="tile"><div class="k">Comisiones</div><div class="v" id="t-com">—</div><div class="s" id="t-com-s">&nbsp;</div></div>
+      <div class="tile"><div class="k">Total a pagar</div><div class="v" id="t-total">—</div><div class="s" id="t-total-s">&nbsp;</div></div>
+    </div>
+
+    <div class="tablecard">
+      <header>
+        <h3>Tabla de amortización</h3>
+        <p id="tablesub">&nbsp;</p>
+      </header>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th class="l">Cuota</th>
+              <th class="l">Fecha</th>
+              <th>Saldo inicial</th>
+              <th>Cuota total</th>
+              <th>Comisión</th>
+              <th>Abono capital</th>
+              <th>Saldo final</th>
+              <th class="pen">Pen. cuota impaga</th>
+              <th class="pen">Pen. plazo vencido</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+          <tfoot id="tfoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="notes">
+      <strong>Cómo se calcula</strong>
+      <ul>
+        <li>La comisión es <strong>flat</strong>: se calcula sobre el monto financiado original y se mantiene igual en todas las cuotas, sin reducirse a medida que baja el saldo.</li>
+        <li>El abono a capital es el monto financiado dividido entre el número de cuotas. La última cuota absorbe el redondeo para que el saldo cierre en cero.</li>
+        <li>Las cuotas <strong>quincenales y catorcenales se agendan cada 15 y 14 días calendario</strong> a partir de la fecha de la primera cuota, no en días fijos del mes.</li>
+        <li>Ambas penalidades se calculan sobre el monto financiado y se muestran como referencia por cuota; no están incluidas en la cuota total ni en el total a pagar.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var $ = function(id){ return document.getElementById(id); };
+  var FACTOR = { semanal: 1/4, catorcenal: 14/30, quincenal: 1/2, mensual: 1 };
+  var NOMBRE = { semanal:"Semanal", catorcenal:"Catorcenal", quincenal:"Quincenal", mensual:"Mensual" };
+  var ADJ    = { semanal:"semanales", catorcenal:"catorcenales", quincenal:"quincenales", mensual:"mensuales" };
+  var DIAS   = { semanal:7, catorcenal:14, quincenal:15 };
+
+  var fmtNum = new Intl.NumberFormat("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2});
+  var modo = "mensual";
+
+  function r2(n){ return Math.round((n + Number.EPSILON) * 100) / 100; }
+  function money(n){ return ($("moneda").value || "") + fmtNum.format(n); }
+  function pct(n){ return fmtNum.format(n) + "%"; }
+  function num(el, def){ var v = parseFloat(el.value); return isFinite(v) ? v : def; }
+
+  function parseDate(v){
+    var p = String(v || "").split("-");
+    if (p.length !== 3) return null;
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  function addMonths(base, k){
+    var d = new Date(base.getFullYear(), base.getMonth() + k, 1);
+    var last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    d.setDate(Math.min(base.getDate(), last));
+    return d;
+  }
+  function fechaCuota(base, i, freq){
+    if (!base) return null;
+    if (freq === "mensual") return addMonths(base, i);
+    var d = new Date(base.getTime());
+    d.setDate(d.getDate() + i * DIAS[freq]);
+    return d;
+  }
+  function fmtDate(d){
+    return d ? d.getDate() + "/" + (d.getMonth() + 1) + "/" + d.getFullYear() : "—";
+  }
+
+  /* ---------------- logo Credix ---------------- */
+  /* Anillo abierto = el crédito en curso; el punto cierra el ciclo con la última cuota. */
+  var LOGO = { anillo:"#b0134e", punto:"#f0497f", arco:278, hueco:-41 };
+  var logoCache = null;
+  function logoPNG(){
+    if (logoCache) return logoCache;
+    var S = 240, c = document.createElement("canvas");
+    c.width = S; c.height = S;
+    var g = c.getContext("2d");
+    var cx = S / 2, cy = S / 2, r = S * 0.35;
+    g.lineWidth = S * 0.1875;
+    g.lineCap = "round";
+    g.strokeStyle = LOGO.anillo;
+    g.beginPath();
+    g.arc(cx, cy, r, 0, LOGO.arco * Math.PI / 180, false);
+    g.stroke();
+    var a = LOGO.hueco * Math.PI / 180;
+    g.fillStyle = LOGO.punto;
+    g.beginPath();
+    g.arc(cx + r * Math.cos(a), cy + r * Math.sin(a), S * 0.09, 0, Math.PI * 2);
+    g.fill();
+    logoCache = c.toDataURL("image/png");
+    return logoCache;
+  }
+
+  /* ---------------- cálculo ---------------- */
+  function calcular(){
+    var monto = num($("monto"), 0);
+    var n = Math.floor(num($("cuotas"), 0));
+    var freq = $("frecuencia").value;
+    var tasaIn = num($("tasa"), 0);
+    var tasaCuota = modo === "mensual" ? tasaIn * FACTOR[freq] : tasaIn;
+    var tasaMensual = modo === "mensual" ? tasaIn : tasaIn / FACTOR[freq];
+    var base = parseDate($("fecha1").value);
+
+    var errores = [];
+    if (!(monto > 0)) errores.push("Ingresá un monto mayor a cero.");
+    if (!(n >= 1 && n <= 360)) errores.push("El número de cuotas debe estar entre 1 y 360.");
+    if (!base) errores.push("Ingresá la fecha de la primera cuota.");
+
+    var comision = r2(monto * tasaCuota / 100);
+    var abonoFijo = r2(monto / (n || 1));
+    var penImpaga = r2(monto * num($("pen1"), 0) / 100);
+    var penVencido = r2(monto * num($("pen2"), 0) / 100);
+
+    var filas = [], saldo = monto, sumCom = 0, sumCap = 0, sumCuota = 0;
+    if (!errores.length){
+      for (var i = 1; i <= n; i++){
+        var abono = (i === n) ? r2(saldo) : abonoFijo;
+        var cuota = r2(abono + comision);
+        var saldoFinal = r2(saldo - abono);
+        filas.push({
+          i: i,
+          fecha: fechaCuota(base, i - 1, freq),
+          saldoInicial: saldo,
+          cuota: cuota,
+          comision: comision,
+          abono: abono,
+          saldoFinal: saldoFinal,
+          penImpaga: penImpaga,
+          penVencido: penVencido
+        });
+        sumCom += comision; sumCap += abono; sumCuota += cuota;
+        saldo = saldoFinal;
+      }
+    }
+
+    return {
+      errores: errores, filas: filas, monto: monto, n: n, freq: freq,
+      tasaCuota: tasaCuota, tasaMensual: tasaMensual, comision: comision,
+      penImpaga: penImpaga, penVencido: penVencido,
+      totComision: r2(sumCom), totCapital: r2(sumCap), total: r2(sumCuota),
+      cuotaTipo: filas.length ? filas[0].cuota : 0,
+      primera: base, ultima: filas.length ? filas[filas.length - 1].fecha : null
+    };
+  }
+
+  /* ---------------- render ---------------- */
+  var ultimo = null;
+
+  function cell(text, cls){
+    var td = document.createElement("td");
+    td.textContent = text;
+    if (cls) td.className = cls;
+    return td;
+  }
+
+  function render(){
+    var m = calcular();
+    ultimo = m;
+
+    var al = $("alert");
+    if (m.errores.length){ al.textContent = m.errores[0]; al.hidden = false; }
+    else { al.hidden = true; }
+    $("btn-pdf").disabled = m.errores.length > 0;
+
+    $("derived").innerHTML = m.errores.length
+      ? "&nbsp;"
+      : "Comisión por cuota: <b>" + pct(m.tasaCuota) + "</b> = <b>" + money(m.comision) +
+        "</b> · equivale a <b>" + pct(m.tasaMensual) + "</b> mensual";
+
+    $("t-monto").textContent = m.errores.length ? "—" : money(m.monto);
+    $("t-monto-s").textContent = m.errores.length ? "capital" : "capital a financiar";
+    $("t-cuota").textContent = m.errores.length ? "—" : money(m.cuotaTipo);
+    $("t-cuota-s").textContent = m.errores.length ? " " : m.n + " cuotas " + ADJ[m.freq];
+    $("t-com").textContent = m.errores.length ? "—" : money(m.totComision);
+    $("t-com-s").textContent = m.errores.length ? " " : money(m.comision) + " por cuota";
+    $("t-total").textContent = m.errores.length ? "—" : money(m.total);
+    $("t-total-s").textContent = m.errores.length ? " " : "capital + comisiones";
+
+    $("tablesub").textContent = m.errores.length ? " "
+      : NOMBRE[m.freq] + " · " + m.n + " cuotas · del " + fmtDate(m.primera) + " al " + fmtDate(m.ultima);
+
+    var tb = $("tbody");
+    tb.textContent = "";
+    m.filas.forEach(function(f){
+      var tr = document.createElement("tr");
+      tr.appendChild(cell(String(f.i), "l per"));
+      tr.appendChild(cell(fmtDate(f.fecha), "l"));
+      tr.appendChild(cell(money(f.saldoInicial)));
+      tr.appendChild(cell(money(f.cuota), "cuota"));
+      tr.appendChild(cell(money(f.comision)));
+      tr.appendChild(cell(money(f.abono)));
+      tr.appendChild(cell(money(f.saldoFinal)));
+      tr.appendChild(cell(money(f.penImpaga), "pen"));
+      tr.appendChild(cell(money(f.penVencido), "pen"));
+      tb.appendChild(tr);
+    });
+
+    var tf = $("tfoot");
+    tf.textContent = "";
+    if (m.filas.length){
+      var tr = document.createElement("tr");
+      var td0 = cell("Totales", "l"); td0.colSpan = 3; tr.appendChild(td0);
+      tr.appendChild(cell(money(m.total)));
+      tr.appendChild(cell(money(m.totComision)));
+      tr.appendChild(cell(money(m.totCapital)));
+      tr.appendChild(cell(""));
+      tr.appendChild(cell(""));
+      tr.appendChild(cell(""));
+      tf.appendChild(tr);
+    }
+  }
+
+  /* ---------------- PDF ---------------- */
+  var COLS = [
+    { k:"i",            t:"Cuota",         w:14, a:"center" },
+    { k:"fecha",        t:"Fecha",         w:26, a:"center" },
+    { k:"saldoInicial", t:"Saldo inicial", w:36, a:"right"  },
+    { k:"cuota",        t:"Cuota total",   w:36, a:"right"  },
+    { k:"comision",     t:"Comisión",      w:32, a:"right"  },
+    { k:"abono",        t:"Abono capital", w:36, a:"right"  },
+    { k:"saldoFinal",   t:"Saldo final",   w:36, a:"right"  },
+    { k:"penImpaga",    t:"Pen. cuota\nimpaga",  w:29, a:"right" },
+    { k:"penVencido",   t:"Pen. plazo\nvencido", w:28, a:"right" }
+  ];
+  var HDR_END = 27, HDR_TBL = 9.5;
+
+  function buildPDF(m){
+    var jsPDF = window.jspdf && window.jspdf.jsPDF;
+    if (!jsPDF) throw new Error("No se pudo cargar el generador de PDF.");
+    var doc = new jsPDF({ orientation:"landscape", unit:"mm", format:"a4" });
+    var PW = 297, PH = 210, M = 12, CW = PW - M * 2;
+
+    var ROSA      = [194,24,91],
+        ROSA_HOND = [142,15,63],
+        ROSA_CLARO = [253,232,239],
+        INK  = [38,22,28],
+        MUT  = [111,91,98],
+        ZEB  = [253,246,249],
+        LINE = [242,220,230],
+        AMBAR = [138,90,18];
+
+    var entidad = ($("entidad").value || "").trim();
+    var cliente = ($("cliente").value || "").trim();
+    var ident   = ($("ident").value || "").trim();
+    var credito = ($("credito").value || "").trim();
+    var hoy = new Date();
+
+    var izqN = (cliente ? 1 : 0) + (ident ? 1 : 0) + (credito ? 1 : 0);
+    var DER = [
+      ["Monto financiado", money(m.monto)],
+      ["Plazo", m.n + " cuotas " + ADJ[m.freq]],
+      ["Primera cuota", fmtDate(m.primera)],
+      ["Última cuota", fmtDate(m.ultima)],
+      ["Comisión flat por cuota", pct(m.tasaCuota) + "  (" + money(m.comision) + ")"],
+      ["Comisión mensual equivalente", pct(m.tasaMensual)],
+      ["Cuota", money(m.cuotaTipo)],
+      ["Total de comisiones", money(m.totComision)],
+      ["Total a pagar", money(m.total)]
+    ];
+    var MITAD = Math.ceil(DER.length / 2);
+    var BLOQUE_H = Math.max(izqN * 5, MITAD * 5) + 9;
+
+    function encabezado(pagina, totalPaginas){
+      doc.setFillColor(ROSA[0],ROSA[1],ROSA[2]);
+      doc.rect(0, 0, PW, 3, "F");
+
+      try { doc.addImage(logoPNG(), "PNG", M, 7.5, 12, 12, "credix-logo", "FAST"); } catch (e){}
+
+      doc.setFont("times","bold"); doc.setFontSize(17);
+      doc.setTextColor(ROSA_HOND[0],ROSA_HOND[1],ROSA_HOND[2]);
+      doc.text(entidad || "Credix", M + 14.5, 17);
+
+      doc.setFont("times","bold"); doc.setFontSize(14);
+      doc.setTextColor(INK[0],INK[1],INK[2]);
+      doc.text("TABLA DE AMORTIZACIÓN", PW - M, 14.5, { align:"right" });
+
+      doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+      doc.setTextColor(MUT[0],MUT[1],MUT[2]);
+      var sub = "Emitida el " + fmtDate(hoy);
+      if (totalPaginas > 1) sub += "   ·   Página " + pagina + " de " + totalPaginas;
+      doc.text(sub, PW - M, 20, { align:"right" });
+      return HDR_END;
+    }
+
+    function bloqueDatos(y){
+      var y0 = y;
+      doc.setFontSize(9);
+
+      var izq = [];
+      if (cliente) izq.push(["Cliente", cliente]);
+      if (ident)   izq.push(["Identificación", ident]);
+      if (credito) izq.push(["N.º de crédito", credito]);
+      izq.forEach(function(p){
+        doc.setFont("helvetica","normal"); doc.setTextColor(MUT[0],MUT[1],MUT[2]);
+        doc.text(p[0], M, y);
+        doc.setFont("helvetica","bold"); doc.setTextColor(INK[0],INK[1],INK[2]);
+        doc.text(p[1], M + 34, y);
+        y += 5;
+      });
+
+      var colW = 82, x1 = PW - M - colW * 2 - 8, x2 = PW - M - colW;
+      [DER.slice(0, MITAD), DER.slice(MITAD)].forEach(function(grupo, gi){
+        var x = gi === 0 ? x1 : x2, yy = y0;
+        grupo.forEach(function(p){
+          doc.setFont("helvetica","normal"); doc.setTextColor(MUT[0],MUT[1],MUT[2]);
+          doc.text(p[0], x, yy);
+          doc.setFont("helvetica","bold"); doc.setTextColor(INK[0],INK[1],INK[2]);
+          doc.text(p[1], x + colW, yy, { align:"right" });
+          yy += 5;
+        });
+      });
+
+      var fin = y0 + Math.max(izqN * 5, MITAD * 5) + 2;
+      doc.setDrawColor(LINE[0],LINE[1],LINE[2]); doc.setLineWidth(0.3);
+      doc.line(M, fin, PW - M, fin);
+      return y0 + BLOQUE_H;
+    }
+
+    function cabeceraTabla(y){
+      var x = M;
+      doc.setFillColor(ROSA[0],ROSA[1],ROSA[2]);
+      doc.rect(M, y, CW, HDR_TBL, "F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(7.4); doc.setTextColor(255,255,255);
+      COLS.forEach(function(c){
+        var lineas = c.t.toUpperCase().split("\n");
+        var alin = c.a === "center" ? "center" : (c.a === "right" ? "right" : "left");
+        var tx = c.a === "right" ? x + c.w - 2.5 : (c.a === "center" ? x + c.w / 2 : x + 2.5);
+        var ty = lineas.length > 1 ? y + 4.2 : y + 6;
+        lineas.forEach(function(ln, i){ doc.text(ln, tx, ty + i * 3.3, { align: alin }); });
+        x += c.w;
+      });
+      return y + HDR_TBL;
+    }
+
+    function fila(f, y, alterna){
+      var x = M, h = 6.2;
+      if (alterna){ doc.setFillColor(ZEB[0],ZEB[1],ZEB[2]); doc.rect(M, y, CW, h, "F"); }
+      doc.setFontSize(8);
+      COLS.forEach(function(c){
+        var val, esPen = c.k === "penImpaga" || c.k === "penVencido";
+        if (c.k === "i") val = String(f.i);
+        else if (c.k === "fecha") val = fmtDate(f.fecha);
+        else val = money(f[c.k]);
+
+        doc.setFont("helvetica", c.k === "cuota" ? "bold" : "normal");
+        if (esPen) doc.setTextColor(AMBAR[0],AMBAR[1],AMBAR[2]);
+        else if (c.k === "cuota") doc.setTextColor(ROSA_HOND[0],ROSA_HOND[1],ROSA_HOND[2]);
+        else if (c.k === "i") doc.setTextColor(MUT[0],MUT[1],MUT[2]);
+        else doc.setTextColor(INK[0],INK[1],INK[2]);
+
+        var tx = c.a === "right" ? x + c.w - 2.5 : (c.a === "center" ? x + c.w / 2 : x + 2.5);
+        doc.text(val, tx, y + 4.2, { align: c.a === "center" ? "center" : (c.a === "right" ? "right" : "left") });
+        x += c.w;
+      });
+      doc.setDrawColor(LINE[0],LINE[1],LINE[2]); doc.setLineWidth(0.15);
+      doc.line(M, y + h, PW - M, y + h);
+      return y + h;
+    }
+
+    function totales(y){
+      var x = M, h = 7.5;
+      doc.setFillColor(ROSA_CLARO[0],ROSA_CLARO[1],ROSA_CLARO[2]);
+      doc.rect(M, y, CW, h, "F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(8);
+      doc.setTextColor(ROSA_HOND[0],ROSA_HOND[1],ROSA_HOND[2]);
+      var vals = { cuota: money(m.total), comision: money(m.totComision), abono: money(m.totCapital) };
+      doc.text("TOTALES", M + 2.5, y + 5);
+      COLS.forEach(function(c){
+        if (vals[c.k]) doc.text(vals[c.k], x + c.w - 2.5, y + 5, { align:"right" });
+        x += c.w;
+      });
+      return y + h;
+    }
+
+    function pie(y){
+      var sym = ($("moneda").value || "");
+      var lineas = [
+        "La comisión es flat: se calcula sobre el monto financiado original (" + money(m.monto) + ") y se mantiene fija en todas las cuotas.",
+        "Penalidad por cuota impaga: " + pct(num($("pen1"),0)) + " sobre el monto financiado = " + money(m.penImpaga) + " por cada cuota no pagada en la fecha indicada.",
+        "Penalidad por plazo vencido: " + pct(num($("pen2"),0)) + " sobre el monto financiado = " + money(m.penVencido) + ".",
+        "Las penalidades se muestran como referencia y no están incluidas en la cuota total ni en el total a pagar.",
+        "Documento informativo generado el " + fmtDate(hoy) + ". Los montos están expresados en " + (sym || "moneda local") + "."
+      ];
+      doc.setFont("helvetica","normal"); doc.setFontSize(7.4); doc.setTextColor(MUT[0],MUT[1],MUT[2]);
+      lineas.forEach(function(t){
+        doc.setTextColor(ROSA[0],ROSA[1],ROSA[2]); doc.text("·", M, y);
+        doc.setTextColor(MUT[0],MUT[1],MUT[2]); doc.text(t, M + 3, y);
+        y += 3.6;
+      });
+
+      y += 8;
+      if (y > PH - 16) return;
+      doc.setDrawColor(180,160,168); doc.setLineWidth(0.25);
+      doc.line(M, y, M + 70, y);
+      doc.line(M + 90, y, M + 150, y);
+      doc.setFontSize(7.5); doc.setTextColor(MUT[0],MUT[1],MUT[2]);
+      doc.text("Firma del cliente", M, y + 4);
+      doc.text("Fecha", M + 90, y + 4);
+    }
+
+    // Dos pasadas: la primera cuenta páginas, la segunda dibuja con el total correcto.
+    function recorrer(dry, total){
+      var pagina = 1, limite = PH - 20;
+      var y = dry ? HDR_END : encabezado(1, total);
+      y = dry ? y + BLOQUE_H : bloqueDatos(y);
+      y = dry ? y + HDR_TBL : cabeceraTabla(y);
+
+      for (var i = 0; i < m.filas.length; i++){
+        if (y + 6.2 > limite){
+          pagina++;
+          if (dry){ y = HDR_END + 4 + HDR_TBL; }
+          else { doc.addPage(); y = cabeceraTabla(encabezado(pagina, total) + 4); }
+        }
+        y = dry ? y + 6.2 : fila(m.filas[i], y, i % 2 === 1);
+      }
+
+      if (y + 7.5 + 26 > limite){
+        pagina++;
+        if (dry){ y = HDR_END; }
+        else { doc.addPage(); y = encabezado(pagina, total); }
+        y += 4;
+      }
+      if (!dry){ y = totales(y); pie(y + 8); }
+      return pagina;
+    }
+
+    recorrer(false, recorrer(true, 1));
+    return doc;
+  }
+
+  function nombreArchivo(){
+    var cliente = ($("cliente").value || "").trim();
+    var credito = ($("credito").value || "").trim();
+    var partes = ["Tabla de amortizacion"];
+    if (cliente) partes.push(cliente);
+    if (credito) partes.push(credito);
+    var base = partes.join(" - ").replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, " ").trim();
+    return base.slice(0, 120) + ".pdf";
+  }
+
+  var toastTimer = null;
+  function toast(msg){
+    var prev = document.querySelector(".toast");
+    if (prev) prev.remove();
+    var el = document.createElement("div");
+    el.className = "toast";
+    el.textContent = msg;
+    document.body.appendChild(el);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ el.remove(); }, 4200);
+  }
+
+  var descargas = null;
+  if (window.claude && typeof window.claude.use === "function"){
+    window.claude.use("downloads").then(function(d){ descargas = d; }).catch(function(){});
+  }
+
+  $("btn-pdf").addEventListener("click", function(){
+    var btn = this;
+    var m = ultimo || calcular();
+    if (m.errores.length){ toast(m.errores[0]); return; }
+
+    var doc;
+    try { doc = buildPDF(m); }
+    catch (e){ toast("No se pudo generar el PDF: " + e.message); return; }
+
+    var blob = doc.output("blob");
+    var nombre = nombreArchivo();
+
+    if (descargas){
+      btn.disabled = true;
+      descargas.save({ filename: nombre, data: blob }).then(function(){
+        toast("PDF guardado: " + nombre);
+      }).catch(function(err){
+        var code = err && err.code;
+        if (code === "declined") toast("Descarga cancelada.");
+        else if (code === "rate_limited") toast("Esperá un momento e intentá de nuevo.");
+        else toast("No se pudo guardar el PDF" + (err && err.message ? ": " + err.message : "."));
+      }).then(function(){ btn.disabled = false; });
+      return;
+    }
+
+    try {
+      doc.save(nombre);
+      toast("PDF generado: " + nombre);
+    } catch (e){
+      toast("Este visor no permite descargas. Abrí el archivo local del simulador para guardar el PDF.");
+    }
+  });
+
+  /* ---------------- eventos ---------------- */
+  $("form").addEventListener("input", render);
+  $("form").addEventListener("change", render);
+  $("modo").addEventListener("click", function(ev){
+    var b = ev.target.closest("button[data-modo]");
+    if (!b) return;
+    modo = b.dataset.modo;
+    Array.prototype.forEach.call(this.querySelectorAll("button"), function(x){
+      x.setAttribute("aria-pressed", String(x === b));
+    });
+    var freq = $("frecuencia").value;
+    var actual = num($("tasa"), 0);
+    $("tasa").value = modo === "cuota" ? +(actual * FACTOR[freq]).toFixed(4) : +(actual / FACTOR[freq]).toFixed(4);
+    $("tasa-label").textContent = modo === "mensual" ? "Comisión mensual (%)" : "Comisión por cuota (%)";
+    render();
+  });
+
+  render();
+})();
+</script>
