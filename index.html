@@ -232,6 +232,9 @@
   tbody td.per{color:var(--faint)}
   tbody td.pen{color:var(--flag);background:var(--flag-soft)}
   tbody td.cuota{font-weight:600;color:var(--accent-deep)}
+  tbody tr.desembolso td{background:var(--accent-soft);border-bottom:1px solid var(--accent-soft-2)}
+  tbody tr.desembolso td.l{font-family:var(--sans);font-size:12px}
+  tbody tr.desembolso td.pen{background:var(--accent-soft);color:var(--faint)}
   tbody tr:last-child td{border-bottom:0}
   tfoot td{
     padding:10px 12px;
@@ -312,9 +315,15 @@
           </select>
         </div>
       </div>
-      <div class="field">
-        <label for="fecha1">Fecha de la primera cuota</label>
-        <input type="date" id="fecha1" value="2026-10-03">
+      <div class="row2">
+        <div class="field">
+          <label for="desembolso">Fecha de desembolso</label>
+          <input type="date" id="desembolso" value="2026-09-18">
+        </div>
+        <div class="field">
+          <label for="fecha1">Fecha de la primera cuota</label>
+          <input type="date" id="fecha1" value="2026-10-03">
+        </div>
       </div>
     </div>
 
@@ -329,6 +338,13 @@
       <div class="field">
         <label for="tasa" id="tasa-label">Comisión mensual (%)</label>
         <input type="number" id="tasa" class="num" value="7" min="0" step="0.01">
+      </div>
+      <div class="field">
+        <label>Cuándo se cobra la comisión</label>
+        <div class="segmented" id="cobro" role="group" aria-label="Cuándo se cobra la comisión">
+          <button type="button" data-cobro="inicio" aria-pressed="true">Toda al inicio</button>
+          <button type="button" data-cobro="cuota" aria-pressed="false">En cada cuota</button>
+        </div>
       </div>
       <div class="derived" id="derived">&nbsp;</div>
     </div>
@@ -412,7 +428,7 @@
     <div class="notes">
       <strong>Cómo se calcula</strong>
       <ul>
-        <li>La comisión es <strong>flat</strong>: se calcula sobre el monto financiado original y se mantiene igual en todas las cuotas, sin reducirse a medida que baja el saldo.</li>
+        <li id="nota-comision"></li>
         <li id="nota-capital"></li>
         <li>Las cuotas <strong>quincenales y catorcenales se agendan cada 15 y 14 días calendario</strong> a partir de la fecha de la primera cuota, no en días fijos del mes.</li>
         <li>Ambas penalidades se calculan sobre el monto financiado y se muestran como referencia por cuota; no están incluidas en la cuota total ni en el total a pagar.</li>
@@ -434,6 +450,7 @@
   var fmtNum = new Intl.NumberFormat("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2});
   var modo = "mensual";      // base de la comisión: "mensual" | "cuota"
   var capital = "cuotas";    // pago del capital: "cuotas" (amortizable) | "vencimiento" (bullet)
+  var cobro = "inicio";      // cobro de la comisión: "inicio" (toda al desembolso, por defecto) | "cuota"
 
   function r2(n){ return Math.round((n + Number.EPSILON) * 100) / 100; }
   function money(n){ return ($("moneda").value || "") + fmtNum.format(n); }
@@ -497,48 +514,73 @@
     var tasaCuota = modo === "mensual" ? tasaIn * FACTOR[freq] : tasaIn;
     var tasaMensual = modo === "mensual" ? tasaIn : tasaIn / FACTOR[freq];
     var base = parseDate($("fecha1").value);
+    var fDes = parseDate($("desembolso").value);
 
     var errores = [];
     if (!(monto > 0)) errores.push("Ingresá un monto mayor a cero.");
     if (!(n >= 1 && n <= 360)) errores.push("El número de cuotas debe estar entre 1 y 360.");
     if (!base) errores.push("Ingresá la fecha de la primera cuota.");
+    if (cobro === "inicio" && !fDes) errores.push("Ingresá la fecha de desembolso: la comisión se cobra ese día.");
 
-    var comision = r2(monto * tasaCuota / 100);
+    var comision = r2(monto * tasaCuota / 100);          // comisión de un período
+    var alInicio = cobro === "inicio";
+    var comisionInicio = alInicio ? r2(comision * n) : 0; // todas sumadas, cobradas al desembolso
+    var comEnCuota = alInicio ? 0 : comision;
     var abonoFijo = r2(monto / (n || 1));
     var penImpaga = r2(monto * num($("pen1"), 0) / 100);
     var penVencido = r2(monto * num($("pen2"), 0) / 100);
 
-    var filas = [], saldo = monto, sumCom = 0, sumCap = 0, sumCuota = 0;
+    var cuotas = [], saldo = monto;
     if (!errores.length){
       for (var i = 1; i <= n; i++){
-        // Al vencimiento (bullet): las cuotas pagan solo comisión y el capital cae entero en la última.
+        // Al vencimiento (bullet): las cuotas no abonan capital y este cae entero en la última.
         var abono = (i === n) ? r2(saldo) : (capital === "vencimiento" ? 0 : abonoFijo);
-        var cuota = r2(abono + comision);
-        var saldoFinal = r2(saldo - abono);
-        filas.push({
+        cuotas.push({
           i: i,
           fecha: fechaCuota(base, i - 1, freq),
           saldoInicial: saldo,
-          cuota: cuota,
-          comision: comision,
+          cuota: r2(abono + comEnCuota),
+          comision: comEnCuota,
           abono: abono,
-          saldoFinal: saldoFinal,
+          saldoFinal: r2(saldo - abono),
           penImpaga: penImpaga,
           penVencido: penVencido
         });
-        sumCom += comision; sumCap += abono; sumCuota += cuota;
-        saldo = saldoFinal;
+        saldo = r2(saldo - abono);
       }
     }
 
+    // Fila 0: cobro de la comisión el día del desembolso. No mueve el capital.
+    var filas = cuotas.slice();
+    if (alInicio && !errores.length){
+      filas.unshift({
+        i: 0, desembolso: true,
+        fecha: fDes,
+        saldoInicial: monto,
+        cuota: comisionInicio,
+        comision: comisionInicio,
+        abono: 0,
+        saldoFinal: monto,
+        penImpaga: null,
+        penVencido: null
+      });
+    }
+
+    var sumCom = 0, sumCap = 0, sumCuota = 0;
+    filas.forEach(function(f){ sumCom += f.comision; sumCap += f.abono; sumCuota += f.cuota; });
+
     return {
-      errores: errores, filas: filas, monto: monto, n: n, freq: freq, capital: capital,
-      tasaCuota: tasaCuota, tasaMensual: tasaMensual, comision: comision,
+      errores: errores, filas: filas, monto: monto, n: n, freq: freq,
+      capital: capital, cobro: cobro, alInicio: alInicio,
+      tasaCuota: tasaCuota, tasaMensual: tasaMensual,
+      comision: comision, comisionInicio: comisionInicio,
       penImpaga: penImpaga, penVencido: penVencido,
       totComision: r2(sumCom), totCapital: r2(sumCap), total: r2(sumCuota),
-      cuotaTipo: filas.length ? filas[0].cuota : 0,
-      cuotaFinal: filas.length ? filas[filas.length - 1].cuota : 0,
-      primera: base, ultima: filas.length ? filas[filas.length - 1].fecha : null
+      neto: r2(monto - comisionInicio),
+      cuotaTipo: cuotas.length ? cuotas[0].cuota : 0,
+      cuotaFinal: cuotas.length ? cuotas[cuotas.length - 1].cuota : 0,
+      desembolso: fDes,
+      primera: base, ultima: cuotas.length ? cuotas[cuotas.length - 1].fecha : null
     };
   }
 
@@ -563,11 +605,15 @@
 
     $("derived").innerHTML = m.errores.length
       ? "&nbsp;"
-      : "Comisión por cuota: <b>" + pct(m.tasaCuota) + "</b> = <b>" + money(m.comision) +
-        "</b> · equivale a <b>" + pct(m.tasaMensual) + "</b> mensual";
+      : m.alInicio
+        ? "Comisión por período: <b>" + pct(m.tasaCuota) + "</b> = <b>" + money(m.comision) + "</b> × " + m.n +
+          " cuotas = <b>" + money(m.comisionInicio) + "</b> al desembolso"
+        : "Comisión por cuota: <b>" + pct(m.tasaCuota) + "</b> = <b>" + money(m.comision) +
+          "</b> · equivale a <b>" + pct(m.tasaMensual) + "</b> mensual";
 
     $("t-monto").textContent = m.errores.length ? "—" : money(m.monto);
-    $("t-monto-s").textContent = m.errores.length ? "capital" : "capital a financiar";
+    $("t-monto-s").textContent = m.errores.length ? "capital"
+      : (m.alInicio ? "neto al cliente " + money(m.neto) : "capital a financiar");
     var bullet = m.capital === "vencimiento";
     $("t-cuota-k").textContent = bullet ? "Cuota periódica" : "Cuota";
     $("t-cuota").textContent = m.errores.length ? "—" : money(m.cuotaTipo);
@@ -575,11 +621,18 @@
       : (bullet ? m.n + " cuotas · última de " + money(m.cuotaFinal)
                 : m.n + " cuotas " + ADJ[m.freq]);
     $("nota-capital").textContent = bullet
-      ? "El capital se paga al vencimiento: las " + (m.n > 1 ? "primeras " + (m.n - 1) + " cuotas " : "cuotas ") +
-        "cubren solo la comisión y el capital completo se cancela en la última cuota, junto con su comisión."
+      ? "El capital se paga al vencimiento: el monto completo se cancela en la última cuota, el " + fmtDate(m.ultima) +
+        (m.alInicio ? ", y las cuotas anteriores quedan en cero porque la comisión ya se cobró al inicio."
+                    : ", y las cuotas anteriores cubren solo la comisión.")
       : "El abono a capital es el monto financiado dividido entre el número de cuotas. La última cuota absorbe el redondeo para que el saldo cierre en cero.";
     $("t-com").textContent = m.errores.length ? "—" : money(m.totComision);
-    $("t-com-s").textContent = m.errores.length ? " " : money(m.comision) + " por cuota";
+    $("t-com-s").textContent = m.errores.length ? " "
+      : (m.alInicio ? "cobradas al desembolso" : money(m.comision) + " por cuota");
+    $("nota-comision").innerHTML = m.alInicio
+      ? "La comisión es <strong>flat</strong>: " + pct(m.tasaCuota) + " del monto financiado por período (" + pct(m.tasaMensual) +
+        " mensual). Se suman las " + m.n + " y <strong>se cobran íntegras al desembolso</strong>, el " + fmtDate(m.desembolso) +
+        "; las cuotas posteriores son solo capital."
+      : "La comisión es <strong>flat</strong>: se calcula sobre el monto financiado original y se cobra junto con cada cuota, sin reducirse a medida que baja el saldo.";
     $("t-total").textContent = m.errores.length ? "—" : money(m.total);
     $("t-total-s").textContent = m.errores.length ? " " : "capital + comisiones";
 
@@ -591,15 +644,16 @@
     tb.textContent = "";
     m.filas.forEach(function(f){
       var tr = document.createElement("tr");
-      tr.appendChild(cell(String(f.i), "l per"));
-      tr.appendChild(cell(fmtDate(f.fecha), "l"));
+      if (f.desembolso) tr.className = "desembolso";
+      tr.appendChild(cell(f.desembolso ? "0" : String(f.i), "l per"));
+      tr.appendChild(cell(fmtDate(f.fecha) + (f.desembolso ? " · desembolso" : ""), "l"));
       tr.appendChild(cell(money(f.saldoInicial)));
       tr.appendChild(cell(money(f.cuota), "cuota"));
       tr.appendChild(cell(money(f.comision)));
       tr.appendChild(cell(money(f.abono)));
       tr.appendChild(cell(money(f.saldoFinal)));
-      tr.appendChild(cell(money(f.penImpaga), "pen"));
-      tr.appendChild(cell(money(f.penVencido), "pen"));
+      tr.appendChild(cell(f.penImpaga == null ? "—" : money(f.penImpaga), "pen"));
+      tr.appendChild(cell(f.penVencido == null ? "—" : money(f.penVencido), "pen"));
       tb.appendChild(tr);
     });
 
@@ -659,17 +713,43 @@
       ["Monto financiado", money(m.monto)],
       ["Plazo", m.n + " cuotas " + ADJ[m.freq]],
       ["Pago del capital", bullet ? "Al vencimiento" : "Amortiza en cada cuota"],
+      ["Desembolso", fmtDate(m.desembolso)],
       ["Primera cuota", fmtDate(m.primera)],
       ["Vencimiento", fmtDate(m.ultima)],
-      ["Comisión flat por cuota", pct(m.tasaCuota) + "  (" + money(m.comision) + ")"],
-      ["Comisión mensual equivalente", pct(m.tasaMensual)],
-      [bullet ? "Cuota periódica" : "Cuota", money(m.cuotaTipo)]
+      ["Comisión flat por período", pct(m.tasaCuota) + "  (" + money(m.comision) + ")"],
+      ["Comisión mensual equivalente", pct(m.tasaMensual)]
     ];
-    if (bullet) DER.push(["Cuota final (capital + comisión)", money(m.cuotaFinal)]);
+    if (m.alInicio){
+      DER.push(["Comisión cobrada al desembolso", money(m.comisionInicio)]);
+      DER.push(["Neto al cliente", money(m.neto)]);
+    }
+    DER.push([bullet ? "Cuota periódica" : "Cuota", money(m.cuotaTipo)]);
+    if (bullet) DER.push(["Cuota final", money(m.cuotaFinal)]);
     DER.push(["Total de comisiones", money(m.totComision)]);
     DER.push(["Total a pagar", money(m.total)]);
     var MITAD = Math.ceil(DER.length / 2);
-    var BLOQUE_H = Math.max(izqN * 5, MITAD * 5) + 9;
+    var PASO = 4.6;
+    var BLOQUE_H = Math.max(izqN * PASO, MITAD * PASO) + 8;
+
+    var LINEAS = [
+      m.alInicio
+        ? "La comisión es flat: " + pct(m.tasaCuota) + " del monto financiado por período (" + pct(m.tasaMensual) +
+          " mensual). Las " + m.n + " comisiones se suman y se cobran íntegras el día del desembolso (fila 0 de la tabla), " +
+          "por " + money(m.comisionInicio) + "; las cuotas posteriores son solo capital."
+        : "La comisión es flat: se calcula sobre el monto financiado original (" + money(m.monto) + ") y se cobra junto con cada cuota.",
+      bullet
+        ? "El capital (" + money(m.monto) + ") se paga íntegro al vencimiento, el " + fmtDate(m.ultima) + "."
+        : "El capital se amortiza en partes iguales en cada cuota; la última absorbe el redondeo para que el saldo cierre en cero.",
+      "Penalidad por cuota impaga: " + pct(num($("pen1"),0)) + " sobre el monto financiado = " + money(m.penImpaga) + " por cada cuota no pagada en la fecha indicada.",
+      "Penalidad por plazo vencido: " + pct(num($("pen2"),0)) + " sobre el monto financiado = " + money(m.penVencido) + ".",
+      "Las penalidades se muestran como referencia y no están incluidas en la cuota total ni en el total a pagar.",
+      "Documento informativo generado el " + fmtDate(hoy) + ". Los montos están expresados en " + (($("moneda").value || "") || "moneda local") + "."
+    ];
+    if (m.alInicio){
+      LINEAS.splice(1, 0, "Neto al cliente (monto financiado menos la comisión cobrada al inicio): " + money(m.neto) + ".");
+    }
+    var PIE_PASO = 3.4;
+    var PIE_H = 6 + LINEAS.length * PIE_PASO + 7 + 8;   // notas + firma + margen
 
     function encabezado(pagina, totalPaginas){
       doc.setFillColor(ROSA[0],ROSA[1],ROSA[2]);
@@ -706,7 +786,7 @@
         doc.text(p[0], M, y);
         doc.setFont("helvetica","bold"); doc.setTextColor(INK[0],INK[1],INK[2]);
         doc.text(p[1], M + 34, y);
-        y += 5;
+        y += PASO;
       });
 
       var colW = 82, x1 = PW - M - colW * 2 - 8, x2 = PW - M - colW;
@@ -717,11 +797,11 @@
           doc.text(p[0], x, yy);
           doc.setFont("helvetica","bold"); doc.setTextColor(INK[0],INK[1],INK[2]);
           doc.text(p[1], x + colW, yy, { align:"right" });
-          yy += 5;
+          yy += PASO;
         });
       });
 
-      var fin = y0 + Math.max(izqN * 5, MITAD * 5) + 2;
+      var fin = y0 + Math.max(izqN * PASO, MITAD * PASO) + 2;
       doc.setDrawColor(LINE[0],LINE[1],LINE[2]); doc.setLineWidth(0.3);
       doc.line(M, fin, PW - M, fin);
       return y0 + BLOQUE_H;
@@ -745,16 +825,18 @@
 
     function fila(f, y, alterna){
       var x = M, h = 6.2;
-      if (alterna){ doc.setFillColor(ZEB[0],ZEB[1],ZEB[2]); doc.rect(M, y, CW, h, "F"); }
+      if (f.desembolso){ doc.setFillColor(ROSA_CLARO[0],ROSA_CLARO[1],ROSA_CLARO[2]); doc.rect(M, y, CW, h, "F"); }
+      else if (alterna){ doc.setFillColor(ZEB[0],ZEB[1],ZEB[2]); doc.rect(M, y, CW, h, "F"); }
       doc.setFontSize(8);
       COLS.forEach(function(c){
         var val, esPen = c.k === "penImpaga" || c.k === "penVencido";
         if (c.k === "i") val = String(f.i);
         else if (c.k === "fecha") val = fmtDate(f.fecha);
-        else val = money(f[c.k]);
+        else val = (f[c.k] == null) ? "-" : money(f[c.k]);
 
         doc.setFont("helvetica", c.k === "cuota" ? "bold" : "normal");
-        if (esPen) doc.setTextColor(AMBAR[0],AMBAR[1],AMBAR[2]);
+        if (esPen && f.desembolso) doc.setTextColor(MUT[0],MUT[1],MUT[2]);
+        else if (esPen) doc.setTextColor(AMBAR[0],AMBAR[1],AMBAR[2]);
         else if (c.k === "cuota") doc.setTextColor(ROSA_HOND[0],ROSA_HOND[1],ROSA_HOND[2]);
         else if (c.k === "i") doc.setTextColor(MUT[0],MUT[1],MUT[2]);
         else doc.setTextColor(INK[0],INK[1],INK[2]);
@@ -784,27 +866,15 @@
     }
 
     function pie(y){
-      var sym = ($("moneda").value || "");
-      var lineas = [
-        "La comisión es flat: se calcula sobre el monto financiado original (" + money(m.monto) + ") y se mantiene fija en todas las cuotas.",
-        bullet
-          ? "El capital (" + money(m.monto) + ") se paga íntegro al vencimiento, el " + fmtDate(m.ultima) +
-            "; las cuotas anteriores cubren únicamente la comisión."
-          : "El capital se amortiza en partes iguales en cada cuota; la última absorbe el redondeo para que el saldo cierre en cero.",
-        "Penalidad por cuota impaga: " + pct(num($("pen1"),0)) + " sobre el monto financiado = " + money(m.penImpaga) + " por cada cuota no pagada en la fecha indicada.",
-        "Penalidad por plazo vencido: " + pct(num($("pen2"),0)) + " sobre el monto financiado = " + money(m.penVencido) + ".",
-        "Las penalidades se muestran como referencia y no están incluidas en la cuota total ni en el total a pagar.",
-        "Documento informativo generado el " + fmtDate(hoy) + ". Los montos están expresados en " + (sym || "moneda local") + "."
-      ];
-      doc.setFont("helvetica","normal"); doc.setFontSize(7.4); doc.setTextColor(MUT[0],MUT[1],MUT[2]);
-      lineas.forEach(function(t){
+      doc.setFont("helvetica","normal"); doc.setFontSize(7.4);
+      LINEAS.forEach(function(t){
         doc.setTextColor(ROSA[0],ROSA[1],ROSA[2]); doc.text("·", M, y);
         doc.setTextColor(MUT[0],MUT[1],MUT[2]); doc.text(t, M + 3, y);
-        y += 3.6;
+        y += PIE_PASO;
       });
 
-      y += 8;
-      if (y > PH - 16) return;
+      y += 7;
+      if (y > PH - 12) return;
       doc.setDrawColor(180,160,168); doc.setLineWidth(0.25);
       doc.line(M, y, M + 70, y);
       doc.line(M + 90, y, M + 150, y);
@@ -829,13 +899,13 @@
         y = dry ? y + 6.2 : fila(m.filas[i], y, i % 2 === 1);
       }
 
-      if (y + 7.5 + 34 > limite){
+      if (y + 7.5 + PIE_H > PH - 8){
         pagina++;
         if (dry){ y = HDR_END; }
         else { doc.addPage(); y = encabezado(pagina, total); }
         y += 4;
       }
-      if (!dry){ y = totales(y); pie(y + 8); }
+      if (!dry){ y = totales(y); pie(y + 6); }
       return pagina;
     }
 
@@ -906,15 +976,19 @@
   /* ---------------- eventos ---------------- */
   $("form").addEventListener("input", render);
   $("form").addEventListener("change", render);
-  $("capital").addEventListener("click", function(ev){
-    var b = ev.target.closest("button[data-cap]");
-    if (!b) return;
-    capital = b.dataset.cap;
-    Array.prototype.forEach.call(this.querySelectorAll("button"), function(x){
-      x.setAttribute("aria-pressed", String(x === b));
+  function segmentado(id, attr, fn){
+    $(id).addEventListener("click", function(ev){
+      var b = ev.target.closest("button[" + attr + "]");
+      if (!b) return;
+      Array.prototype.forEach.call(this.querySelectorAll("button"), function(x){
+        x.setAttribute("aria-pressed", String(x === b));
+      });
+      fn(b.getAttribute(attr));
+      render();
     });
-    render();
-  });
+  }
+  segmentado("capital", "data-cap", function(v){ capital = v; });
+  segmentado("cobro", "data-cobro", function(v){ cobro = v; });
   $("modo").addEventListener("click", function(ev){
     var b = ev.target.closest("button[data-modo]");
     if (!b) return;
