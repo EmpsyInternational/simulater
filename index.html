@@ -612,6 +612,7 @@
       cuotaFinal: cuotas.length ? cuotas[cuotas.length - 1].cuota : 0,
       desembolso: fDes, pendiente: pendiente,
       diasTotal: cuotas.length ? cuotas[cuotas.length - 1].dias : 0,
+      diasPrimera: cuotas.length ? cuotas[0].dias : 0,
       primera: base, ultima: cuotas.length ? cuotas[cuotas.length - 1].fecha : null
     };
   }
@@ -680,8 +681,8 @@
 
     $("rango").innerHTML = m.errores.length
       ? "&nbsp;"
-      : "Del <b>" + fmtDate(m.desembolso) + "</b> al <b>" + fmtDate(m.ultima) + "</b> · <b>" +
-        m.diasTotal + " días</b>";
+      : "Desembolso → 1.ª cuota: <b>" + fmtDate(m.desembolso) + "</b> al <b>" + fmtDate(m.primera) +
+        "</b> · <b>" + m.diasPrimera + " días</b>";
 
     $("derived").innerHTML = m.errores.length
       ? "&nbsp;"
@@ -1078,7 +1079,8 @@
   function segmentado(id, attr, fn){
     $(id).addEventListener("click", function(ev){
       var b = ev.target.closest("button[" + attr + "]");
-      if (!b) return;
+      // Volver a pulsar el botón ya activo no debe convertir nada.
+      if (!b || b.getAttribute("aria-pressed") === "true") return;
       Array.prototype.forEach.call(this.querySelectorAll("button"), function(x){
         x.setAttribute("aria-pressed", String(x === b));
       });
@@ -1088,18 +1090,13 @@
   }
   segmentado("capital", "data-cap", function(v){ capital = v; });
   segmentado("cobro", "data-cobro", function(v){ cobro = v; });
-  $("modo").addEventListener("click", function(ev){
-    var b = ev.target.closest("button[data-modo]");
-    if (!b) return;
-    modo = b.dataset.modo;
-    Array.prototype.forEach.call(this.querySelectorAll("button"), function(x){
-      x.setAttribute("aria-pressed", String(x === b));
-    });
+  // Al cambiar de base se conserva el valor económico: 7% mensual <-> 3,5% quincenal.
+  segmentado("modo", "data-modo", function(v){
     var freq = $("frecuencia").value;
     var actual = num($("tasa"), 0);
+    modo = v;
     $("tasa").value = modo === "cuota" ? +(actual * FACTOR[freq]).toFixed(4) : +(actual / FACTOR[freq]).toFixed(4);
     $("tasa-label").textContent = modo === "mensual" ? "Comisión mensual (%)" : "Comisión por cuota (%)";
-    render();
   });
 
   render();
