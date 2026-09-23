@@ -326,6 +326,7 @@
           <input type="date" id="fecha1" value="2026-10-03">
         </div>
       </div>
+      <div class="derived" id="rango">&nbsp;</div>
     </div>
 
     <div class="fieldset">
@@ -427,6 +428,7 @@
       <strong>Cómo se calcula</strong>
       <ul>
         <li id="nota-comision"></li>
+        <li>La tasa diaria es la mensual dividida entre 30. Cambiar las fechas cambia la comisión: si el primer pago se corre, corren más días y la comisión sube.</li>
         <li id="nota-capital"></li>
         <li>La columna <strong>Días</strong> cuenta los días calendario transcurridos desde la fecha de desembolso hasta cada fecha de pago; el último valor es el plazo total de la operación.</li>
         <li>Las cuotas <strong>quincenales y catorcenales se agendan cada 15 y 14 días calendario</strong> a partir de la fecha de la primera cuota, no en días fijos del mes.</li>
@@ -454,6 +456,8 @@
   function r2(n){ return Math.round((n + Number.EPSILON) * 100) / 100; }
   function money(n){ return ($("moneda").value || "") + fmtNum.format(n); }
   function pct(n){ return fmtNum.format(n) + "%"; }
+  var fmtNum4 = new Intl.NumberFormat("de-DE",{minimumFractionDigits:4,maximumFractionDigits:4});
+  function pct4(n){ return fmtNum4.format(n) + "%"; }
   function num(el, def){ var v = parseFloat(el.value); return isFinite(v) ? v : def; }
 
   function parseDate(v){
@@ -476,7 +480,12 @@
     return d;
   }
   function fmtDate(d){
-    return d ? d.getDate() + "/" + (d.getMonth() + 1) + "/" + d.getFullYear() : "—";
+    if (!d) return "—";
+    var p = function(x){ return (x < 10 ? "0" : "") + x; };
+    return p(d.getDate()) + "/" + p(d.getMonth() + 1) + "/" + d.getFullYear();
+  }
+  function dias(desde, hasta){
+    return Math.round((hasta - desde) / 86400000);
   }
 
   /* ---------------- logo Credix ---------------- */
@@ -522,28 +531,32 @@
     else if (!(monto > 0)) errores.push("El monto debe ser mayor a cero.");
     if (!(n >= 1 && n <= 360)) errores.push("El número de cuotas debe estar entre 1 y 360.");
     if (!base) errores.push("Ingresá la fecha de la primera cuota.");
-    if (cobro === "inicio" && !fDes) errores.push("Ingresá la fecha de desembolso: la comisión se descuenta ese día.");
+    if (!fDes) errores.push("Ingresá la fecha de desembolso: desde ahí se cuentan los días.");
 
-    var comision = r2(monto * tasaCuota / 100);          // comisión de un período
+    // La comisión corre por DÍAS, no por cantidad de cuotas: un primer período
+    // largo cuesta más que uno corto aunque el número de cuotas sea el mismo.
+    var tasaDiaria = tasaMensual / 30;
     var alInicio = cobro === "inicio";
-    var comisionInicio = alInicio ? r2(comision * n) : 0; // todas sumadas, cobradas al desembolso
-    var comEnCuota = alInicio ? 0 : comision;
     var abonoFijo = r2(monto / (n || 1));
     var penImpaga = r2(monto * num($("pen1"), 0) / 100);
     var penVencido = r2(monto * num($("pen2"), 0) / 100);
 
-    var origen = fDes || base;   // los días se cuentan desde el desembolso
-    var cuotas = [], saldo = monto;
+    var cuotas = [], saldo = monto, anterior = fDes, sumComPeriodo = 0;
     if (!errores.length){
       for (var i = 1; i <= n; i++){
         // Al vencimiento (bullet): las cuotas no abonan capital y este cae entero en la última.
         var abono = (i === n) ? r2(saldo) : (capital === "vencimiento" ? 0 : abonoFijo);
         var fCuota = fechaCuota(base, i - 1, freq);
+        var diasPeriodo = Math.max(0, dias(anterior, fCuota));
+        var comPeriodo = r2(monto * tasaDiaria / 100 * diasPeriodo);
+        var comEnCuota = alInicio ? 0 : comPeriodo;
         var cuotaTot = r2(abono + comEnCuota);
         cuotas.push({
           i: i,
           fecha: fCuota,
-          dias: Math.round((fCuota - origen) / 86400000),
+          dias: dias(fDes, fCuota),
+          diasPeriodo: diasPeriodo,
+          comPeriodo: comPeriodo,
           saldoInicial: saldo,
           cuota: cuotaTot,
           comision: comEnCuota,
@@ -553,9 +566,16 @@
           penImpaga: cuotaTot > 0 ? penImpaga : null,
           penVencido: cuotaTot > 0 ? penVencido : null
         });
+        sumComPeriodo += comPeriodo;
+        anterior = fCuota;
         saldo = r2(saldo - abono);
       }
     }
+    var comisionInicio = alInicio ? r2(sumComPeriodo) : 0;
+
+    // Si todos los períodos miden lo mismo, la comisión por cuota es un solo número.
+    var uniforme = cuotas.length > 0;
+    cuotas.forEach(function(f){ if (f.diasPeriodo !== cuotas[0].diasPeriodo) uniforme = false; });
 
     // Descuento de giro: la comisión se retiene del desembolso, NO la paga el cliente en cuotas.
     // Por eso no entra en el total a pagar; lo que cambia es el neto que recibe.
@@ -565,8 +585,8 @@
     return {
       errores: errores, filas: cuotas, monto: monto, n: n, freq: freq,
       capital: capital, cobro: cobro, alInicio: alInicio,
-      tasaCuota: tasaCuota, tasaMensual: tasaMensual,
-      comision: comision, retenida: comisionInicio,
+      tasaCuota: tasaCuota, tasaMensual: tasaMensual, tasaDiaria: tasaDiaria,
+      comision: uniforme ? cuotas[0].comPeriodo : null, retenida: comisionInicio,
       comisionTotal: r2(comisionInicio + sumCom),
       penImpaga: penImpaga, penVencido: penVencido,
       totComision: r2(sumCom), totCapital: r2(sumCap), total: r2(sumCuota),
@@ -641,13 +661,16 @@
     } else { al.hidden = true; }
     $("btn-pdf").disabled = m.errores.length > 0;
 
+    $("rango").innerHTML = m.errores.length
+      ? "&nbsp;"
+      : "Del <b>" + fmtDate(m.desembolso) + "</b> al <b>" + fmtDate(m.ultima) + "</b> · <b>" +
+        m.diasTotal + " días</b>";
+
     $("derived").innerHTML = m.errores.length
       ? "&nbsp;"
-      : m.alInicio
-        ? "Comisión por período: <b>" + pct(m.tasaCuota) + "</b> = <b>" + money(m.comision) + "</b> × " + m.n +
-          " períodos = <b>" + money(m.retenida) + "</b> descontados del giro"
-        : "Comisión por cuota: <b>" + pct(m.tasaCuota) + "</b> = <b>" + money(m.comision) +
-          "</b> · equivale a <b>" + pct(m.tasaMensual) + "</b> mensual";
+      : "<b>" + pct(m.tasaMensual) + "</b> mensual = <b>" + pct4(m.tasaDiaria) + "</b> diaria × <b>" +
+        m.diasTotal + " días</b> = <b>" + money(m.comisionTotal) + "</b>" +
+        (m.alInicio ? " descontados del giro" : " cobrados en las cuotas");
 
     $("t-monto-k").textContent = m.alInicio ? "Monto del giro" : "Monto financiado";
     $("t-monto").textContent = m.errores.length ? "—" : money(m.monto);
@@ -666,12 +689,15 @@
       : "El abono a capital es el monto financiado dividido entre el número de cuotas. La última cuota absorbe el redondeo para que el saldo cierre en cero.";
     $("t-com").textContent = m.errores.length ? "—" : money(m.comisionTotal);
     $("t-com-s").textContent = m.errores.length ? " "
-      : (m.alInicio ? "retenidas del giro" : money(m.comision) + " por cuota");
+      : (m.alInicio ? "retenidas del giro · " + m.diasTotal + " días"
+                    : (m.comision != null ? money(m.comision) + " por cuota" : "varía según los días de cada período"));
     $("nota-comision").innerHTML = m.alInicio
-      ? "La comisión es <strong>flat</strong>: " + pct(m.tasaCuota) + " del monto del giro por período (" + pct(m.tasaMensual) +
-        " mensual). Se suman las " + m.n + " y <strong>se descuentan del desembolso</strong> el " + fmtDate(m.desembolso) +
-        ": el cliente recibe " + money(m.neto) + " y no vuelve a pagarlas. Las cuotas son solo capital."
-      : "La comisión es <strong>flat</strong>: se calcula sobre el monto financiado original y se cobra junto con cada cuota, sin reducirse a medida que baja el saldo.";
+      ? "La comisión es <strong>flat y se calcula por días</strong>: " + pct(m.tasaMensual) + " mensual sobre el monto del giro, " +
+        "es decir " + pct4(m.tasaDiaria) + " diaria × " + m.diasTotal + " días = " + money(m.comisionTotal) +
+        ". <strong>Se descuenta del desembolso</strong> el " + fmtDate(m.desembolso) + ": el cliente recibe " + money(m.neto) +
+        " y no vuelve a pagarla. Las cuotas son solo capital."
+      : "La comisión es <strong>flat y se calcula por días</strong>: " + pct(m.tasaMensual) + " mensual sobre el monto original (" +
+        pct4(m.tasaDiaria) + " diaria). Cada cuota cobra los días que corrieron desde el pago anterior, así que un primer período largo cuesta más.";
     $("t-total").textContent = m.errores.length ? "—" : money(m.total);
     $("t-total-s").textContent = m.errores.length ? " "
       : (m.alInicio ? "solo capital, la comisión ya se retuvo" : "capital + comisiones");
@@ -759,14 +785,12 @@
       ["Desembolso", fmtDate(m.desembolso)],
       ["Primera cuota", fmtDate(m.primera)],
       ["Vencimiento", fmtDate(m.ultima)],
-      ["Comisión flat por período", pct(m.tasaCuota) + "  (" + money(m.comision) + ")"],
-      ["Comisión mensual equivalente", pct(m.tasaMensual)]
+      ["Comisión flat", pct(m.tasaMensual) + " mensual  ·  " + pct4(m.tasaDiaria) + " diaria"],
+      ["Comisión por los " + m.diasTotal + " días", money(m.comisionTotal)]
     ];
     if (m.alInicio){
       DER.push(["Comisión retenida del giro", "- " + money(m.retenida)]);
       DER.push(["Neto entregado al cliente", money(m.neto)]);
-    } else {
-      DER.push(["Total de comisiones", money(m.comisionTotal)]);
     }
     DER.push([bullet ? "Cuota periódica" : "Cuota", money(m.cuotaTipo)]);
     if (bullet) DER.push(["Cuota final", money(m.cuotaFinal)]);
@@ -777,10 +801,11 @@
 
     var LINEAS = [
       m.alInicio
-        ? "La comisión es flat: " + pct(m.tasaCuota) + " del monto del giro por período (" + pct(m.tasaMensual) +
-          " mensual). Las " + m.n + " comisiones suman " + money(m.retenida) + " y se descuentan del giro el " +
-          fmtDate(m.desembolso) + ": no se suman al crédito ni se pagan en las cuotas."
-        : "La comisión es flat: se calcula sobre el monto financiado original (" + money(m.monto) + ") y se cobra junto con cada cuota.",
+        ? "La comisión es flat y corre por días: " + pct(m.tasaMensual) + " mensual (" + pct4(m.tasaDiaria) +
+          " diaria) sobre el monto del giro × " + m.diasTotal + " días del " + fmtDate(m.desembolso) + " al " +
+          fmtDate(m.ultima) + " = " + money(m.retenida) + ", que se descuentan del giro y no se pagan en las cuotas."
+        : "La comisión es flat y corre por días: " + pct(m.tasaMensual) + " mensual (" + pct4(m.tasaDiaria) +
+          " diaria) sobre el monto original. Cada cuota cobra los días transcurridos desde el pago anterior.",
       bullet
         ? "El capital (" + money(m.monto) + ") se paga íntegro al vencimiento, el " + fmtDate(m.ultima) + "."
         : "El capital se amortiza en partes iguales en cada cuota; la última absorbe el redondeo para que el saldo cierre en cero.",
